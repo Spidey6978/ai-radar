@@ -12,7 +12,7 @@
         <header>
             <div class="header-top">
                 <div class="brand">
-                    <span class="brand-badge">INTEL RADAR</span>
+                    <span class="brand-badge">RADAR</span>
                     <h1>AI RADAR // Frontier Intelligence</h1>
                 </div>
                 <div class="header-actions">
@@ -26,11 +26,11 @@
                 </div>
             </div>
             <p class="subtitle">
-                Targeted tracker for verified library releases, research disclosures, developer leaks, and systemic AI advisories.
+                Targeted intelligence engine tracking verified model diffs, research disclosures, developer leaks, and systemic AI advisories.
             </p>
         </header>
 
-        <!-- Source Health Drawer / Modal (Initially Hidden) -->
+        <!-- Source Health Drawer -->
         <div id="health-drawer" class="health-drawer hidden">
             <div class="health-drawer-header">
                 <h3>Source Adapters & Registry Health</h3>
@@ -41,8 +41,10 @@
                     <thead>
                         <tr>
                             <th>Source</th>
+                            <th>Track</th>
                             <th>Tier</th>
-                            <th>Last Status</th>
+                            <th>Status</th>
+                            <th>Items</th>
                             <th>Last Check</th>
                         </tr>
                     </thead>
@@ -50,10 +52,11 @@
                         {% for s in sources %}
                         <tr>
                             <td><strong>{{ s.name }}</strong></td>
-                            <td><span class="tier-tag tier-{{ s.tier }}">{{ s.tier }}</span></td>
+                            <td><span class="tier-tag">{{ s.track or 'curated_news' }}</span></td>
+                            <td><span class="tier-tag">{{ s.tier }}</span></td>
                             <td>
-                                {% if s.last_status_code == 200 %}
-                                    <span class="health-badge badge-green">200 OK</span>
+                                {% if s.last_status_code in (200, 304) %}
+                                    <span class="health-badge badge-green">{{ s.last_status_code }} OK</span>
                                 {% elif s.last_status_code == 429 %}
                                     <span class="health-badge badge-yellow">429 Throttled</span>
                                 {% elif s.last_status_code %}
@@ -62,6 +65,7 @@
                                     <span class="health-badge badge-muted">Pending</span>
                                 {% endif %}
                             </td>
+                            <td class="font-mono text-dim">{{ s.items_found_last_run }}</td>
                             <td class="font-mono text-dim">{{ s.last_checked_at[:16] if s.last_checked_at else 'Never' }}</td>
                         </tr>
                         {% endfor %}
@@ -70,19 +74,29 @@
             </div>
         </div>
 
-        <!-- Controls: Search, View Mode & Filters -->
+        <!-- Sticky Controls / Filter Rail -->
         <section class="controls-bar">
             <div class="search-row">
                 <div class="search-box">
-                    <input type="text" id="search-input" class="search-input" placeholder="Search intel with SQLite FTS (e.g. vllm, ollama, Claude, Gemini, satellite, leak)..." autocomplete="off">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search intel (e.g. vllm, ollama, Claude, Gemini, leak)..." autocomplete="off">
                 </div>
                 <div class="view-toggles">
                     <button id="btn-bookmarked" class="btn btn-toggle" title="Show saved bookmarks">
-                        🔖 Saved (<span id="bookmark-count">0</span>)
+                        🔖 Saved (<span id="bookmark-count">{{ bookmark_count }}</span>)
                     </button>
                     <button id="btn-density" class="btn btn-toggle" title="Toggle compact row view">
                         ☰ Compact View
                     </button>
+                </div>
+            </div>
+
+            <!-- Track Filter Pills (Dual-Track Architecture) -->
+            <div class="filter-group">
+                <span class="filter-label">TRACK:</span>
+                <div class="track-pills">
+                    <button class="pill pill-track active" data-track="All">All Intelligence</button>
+                    <button class="pill pill-track" data-track="radar_signal">📡 Radar Diffs & Artifacts</button>
+                    <button class="pill pill-track" data-track="curated_news">📰 Curated News & Leaks</button>
                 </div>
             </div>
 
@@ -113,18 +127,17 @@
             </div>
         </section>
 
-        <!-- Feed List -->
+        <!-- Main Feed Stream -->
         <main>
             <div class="feed-header">
                 <span id="intel-count">{{ items|length }} INTEL SIGNALS</span>
-                <span class="text-dim font-mono">SORTED BY EVIDENCE WEIGHT & FRESHNESS DECAY</span>
+                <span class="text-dim font-mono">SORTED BY EVIDENCE WEIGHT & DYNAMIC FRESHNESS</span>
             </div>
 
             <div id="feed-list" class="feed-list">
                 {% for item in items %}
                 <article class="intel-card" id="card-{{ item.id }}" data-id="{{ item.id }}">
                     <div class="card-meta">
-                        <!-- Evidence Tier Badge -->
                         {% if item.evidence_tier == 'verified_artifact' %}
                             <span class="tag badge-green">🟢 Verified Artifact</span>
                         {% elif item.evidence_tier == 'technical_paper' %}
@@ -155,17 +168,23 @@
                     <p class="card-summary">{{ item.clean_summary }}</p>
                     {% endif %}
 
+                    {% if item.evidence_diff %}
+                    <div class="card-diff-container">
+                        <div class="diff-header font-mono">AUTOMATED SNAPSHOT DIFF</div>
+                        <pre class="diff-content font-mono">{{ item.evidence_diff }}</pre>
+                    </div>
+                    {% endif %}
+
                     <div class="card-footer">
                         <div class="footer-links">
                             <a href="{{ item.canonical_url }}" target="_blank" rel="noopener" class="card-link">Primary Source ↗</a>
                             {% for disc in item.discussion_urls %}
                                 {% if disc != item.canonical_url %}
-                                    <a href="{{ disc }}" target="_blank" rel="noopener" class="discussion-link">💬 Community Discussion</a>
+                                    <a href="{{ disc }}" target="_blank" rel="noopener" class="discussion-link">💬 Discussion</a>
                                 {% endif %}
                             {% endfor %}
                         </div>
 
-                        <!-- User QoL Item Actions -->
                         <div class="card-actions">
                             <button class="btn-action btn-copy-tldr" data-id="{{ item.id }}" title="Copy TL;DR markdown to clipboard">
                                 📋 Copy
@@ -183,7 +202,7 @@
             </div>
         </main>
 
-        <!-- Suggestion & Topics Request Box -->
+        <!-- Feedback & Suggestions Section -->
         <section class="feedback-section">
             <h3 class="feedback-title">Help Shape This Radar & Request Topics</h3>
             <p class="feedback-desc">
@@ -193,7 +212,7 @@
             <form id="feedback-form">
                 <div class="form-group">
                     <label class="form-label" for="feedback-suggestion">Topics, Outlets, or Anomalies to Track:</label>
-                    <textarea id="feedback-suggestion" class="form-control" placeholder="e.g. Track quiet model changes in Antigravity/Cursor config diffs, or track Japanese autonomous drone/satellite filings..." required></textarea>
+                    <textarea id="feedback-suggestion" class="form-control" placeholder="e.g. Track quiet model changes in Antigravity/Cursor config diffs, or track autonomous drone/satellite filings..." required></textarea>
                 </div>
 
                 <div class="form-row">
@@ -208,7 +227,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label" for="feedback-contact">Email or Telegram / Discord Handle (Optional):</label>
+                        <label class="form-label" for="feedback-contact">Email or Handle (Optional):</label>
                         <input type="text" id="feedback-contact" class="form-control" placeholder="your_handle or email (to notify you if implemented)">
                     </div>
                 </div>

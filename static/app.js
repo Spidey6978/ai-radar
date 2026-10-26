@@ -1,14 +1,13 @@
-let currentCategory = "All";
+let currentTrack = "All";
 let currentEvidenceTier = "All";
+let currentCategory = "All";
 let searchQuery = "";
 let showOnlyBookmarked = false;
 let isCompactMode = false;
 let searchDebounceTimer = null;
 
-// Local bookmark cache for immediate UI feedback
-const bookmarkedIds = new Set();
-
 document.addEventListener("DOMContentLoaded", () => {
+    initTrackPills();
     initEvidencePills();
     initCategoryPills();
     initSearch();
@@ -20,8 +19,20 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // -------------------------------------------------------------
-// FILTER PILLS
+// FILTER PILLS & EVENT HANDLERS
 // -------------------------------------------------------------
+
+function initTrackPills() {
+    const pills = document.querySelectorAll(".pill-track");
+    pills.forEach(pill => {
+        pill.addEventListener("click", () => {
+            pills.forEach(p => p.classList.remove("active"));
+            pill.classList.add("active");
+            currentTrack = pill.getAttribute("data-track");
+            fetchAndRenderFeed();
+        });
+    });
+}
 
 function initEvidencePills() {
     const pills = document.querySelectorAll(".pill-evidence");
@@ -56,7 +67,7 @@ function initSearch() {
         searchQuery = e.target.value.trim();
         searchDebounceTimer = setTimeout(() => {
             fetchAndRenderFeed();
-        }, 250);
+        }, 220);
     });
 }
 
@@ -100,19 +111,23 @@ function initHealthDrawer() {
 }
 
 // -------------------------------------------------------------
-// FEED RENDERING & FETCHING
+// FEED RENDERING & QUERY-TIME FETCHING
 // -------------------------------------------------------------
 
 async function fetchAndRenderFeed() {
     const feedList = document.getElementById("feed-list");
     const countBadge = document.getElementById("intel-count");
+    const bookmarkCountBadge = document.getElementById("bookmark-count");
     
     let url = `/api/feed?limit=70`;
-    if (currentCategory && currentCategory !== "All") {
-        url += `&category=${encodeURIComponent(currentCategory)}`;
+    if (currentTrack && currentTrack !== "All") {
+        url += `&track=${encodeURIComponent(currentTrack)}`;
     }
     if (currentEvidenceTier && currentEvidenceTier !== "All") {
         url += `&evidence_tier=${encodeURIComponent(currentEvidenceTier)}`;
+    }
+    if (currentCategory && currentCategory !== "All") {
+        url += `&category=${encodeURIComponent(currentCategory)}`;
     }
     if (searchQuery) {
         url += `&search=${encodeURIComponent(searchQuery)}`;
@@ -128,11 +143,14 @@ async function fetchAndRenderFeed() {
         if (countBadge) {
             countBadge.innerText = `${data.count} INTEL SIGNALS`;
         }
+        if (bookmarkCountBadge && data.bookmark_count !== undefined) {
+            bookmarkCountBadge.innerText = data.bookmark_count;
+        }
 
         if (!data.items || data.items.length === 0) {
             feedList.innerHTML = `
-                <div class="intel-card" style="text-align: center; color: var(--text-dim); padding: 40px;">
-                    No intel signals match the active filters. Try resetting search or checking another evidence tier.
+                <div class="intel-card" style="text-align: center; color: var(--dim); padding: 48px;">
+                    No intel signals match the active filters. Try clearing search or switching tracks.
                 </div>
             `;
             return;
@@ -165,7 +183,7 @@ function renderCard(item) {
     const scoreBadge = item.community_score > 0 ? 
         `<span class="tag tag-score">🔥 ${item.community_score} pts</span>` : "";
 
-    const isBookmarked = item.is_bookmarked || bookmarkedIds.has(item.id);
+    const isBookmarked = item.is_bookmarked === 1;
     const bookmarkLabel = isBookmarked ? "🔖 Saved" : "🔖 Save";
     const bookmarkClass = isBookmarked ? "active" : "";
     const isReadClass = item.is_read ? "is-read" : "";
@@ -174,9 +192,19 @@ function renderCard(item) {
     if (item.discussion_urls && Array.isArray(item.discussion_urls)) {
         item.discussion_urls.forEach(d => {
             if (d && d !== item.canonical_url) {
-                discussionsHtml += `<a href="${escapeHtml(d)}" target="_blank" rel="noopener" class="discussion-link">💬 Community Discussion</a>`;
+                discussionsHtml += `<a href="${escapeHtml(d)}" target="_blank" rel="noopener" class="discussion-link">💬 Discussion</a>`;
             }
         });
+    }
+
+    let diffHtml = "";
+    if (item.evidence_diff) {
+        diffHtml = `
+            <div class="card-diff-container">
+                <div class="diff-header font-mono">AUTOMATED SNAPSHOT DIFF</div>
+                <pre class="diff-content font-mono">${escapeHtml(item.evidence_diff)}</pre>
+            </div>
+        `;
     }
 
     return `
@@ -194,6 +222,8 @@ function renderCard(item) {
             </h2>
 
             ${item.clean_summary ? `<p class="card-summary">${escapeHtml(item.clean_summary)}</p>` : ""}
+
+            ${diffHtml}
 
             <div class="card-footer">
                 <div class="footer-links">
@@ -218,13 +248,12 @@ function renderCard(item) {
 }
 
 // -------------------------------------------------------------
-// CARD ACTIONS (READ, BOOKMARK, DISMISS, COPY)
+// USER ACTIONS (READ, BOOKMARK, DISMISS, COPY)
 // -------------------------------------------------------------
 
 function bindCardActions(container) {
-    // Title click -> mark read
     container.querySelectorAll(".card-title-link").forEach(link => {
-        link.addEventListener("click", (e) => {
+        link.addEventListener("click", () => {
             const card = link.closest(".intel-card");
             if (!card) return;
             const itemId = card.getAttribute("data-id");
@@ -233,7 +262,6 @@ function bindCardActions(container) {
         });
     });
 
-    // Bookmark button
     container.querySelectorAll(".btn-bookmark").forEach(btn => {
         btn.addEventListener("click", async () => {
             const itemId = btn.getAttribute("data-id");
@@ -243,17 +271,14 @@ function bindCardActions(container) {
             btn.classList.toggle("active", newSaved);
             btn.innerText = newSaved ? "🔖 Saved" : "🔖 Save";
             
-            if (newSaved) {
-                bookmarkedIds.add(itemId);
-            } else {
-                bookmarkedIds.delete(itemId);
+            const res = await postItemAction(itemId, { is_bookmarked: newSaved });
+            if (res && res.bookmark_count !== undefined) {
+                const badge = document.getElementById("bookmark-count");
+                if (badge) badge.innerText = res.bookmark_count;
             }
-            updateBookmarkCount();
-            await postItemAction(itemId, { is_bookmarked: newSaved });
         });
     });
 
-    // Dismiss button
     container.querySelectorAll(".btn-dismiss").forEach(btn => {
         btn.addEventListener("click", async () => {
             const itemId = btn.getAttribute("data-id");
@@ -261,13 +286,12 @@ function bindCardActions(container) {
             if (card) {
                 card.style.opacity = "0";
                 card.style.transform = "scale(0.98)";
-                setTimeout(() => card.remove(), 150);
+                setTimeout(() => card.remove(), 160);
             }
             await postItemAction(itemId, { is_dismissed: true });
         });
     });
 
-    // Copy TL;DR button
     container.querySelectorAll(".btn-copy-tldr").forEach(btn => {
         btn.addEventListener("click", () => {
             const card = btn.closest(".intel-card");
@@ -280,7 +304,7 @@ function bindCardActions(container) {
             navigator.clipboard.writeText(textToCopy).then(() => {
                 const originalText = btn.innerText;
                 btn.innerText = "✓ Copied!";
-                btn.style.color = "var(--accent-green)";
+                btn.style.color = "var(--verified)";
                 setTimeout(() => {
                     btn.innerText = originalText;
                     btn.style.color = "";
@@ -292,20 +316,14 @@ function bindCardActions(container) {
 
 async function postItemAction(itemId, payload) {
     try {
-        await fetch(`/api/feed/${itemId}/action`, {
+        const res = await fetch(`/api/feed/${itemId}/action`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
+        return await res.json();
     } catch (err) {
         console.error("Failed to update item action:", err);
-    }
-}
-
-function updateBookmarkCount() {
-    const countEl = document.getElementById("bookmark-count");
-    if (countEl) {
-        countEl.innerText = bookmarkedIds.size;
     }
 }
 
@@ -354,10 +372,8 @@ function initRefreshButton() {
         try {
             await fetch("/api/collector/trigger", { method: "POST" });
             
-            // Wait 4 seconds for adapters to complete background cycle, then refresh feed
             setTimeout(async () => {
                 await fetchAndRenderFeed();
-                // Update sources health badge
                 const healthRes = await fetch("/api/sources/health");
                 const healthData = await healthRes.json();
                 const summaryEl = document.getElementById("sources-summary");

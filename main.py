@@ -1,5 +1,5 @@
-import asyncio
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List
@@ -12,11 +12,19 @@ from pydantic import BaseModel
 import database
 import collector
 
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "radar_admin_secret_dev")
+# Production-safe admin key handling: reject default string in production
+ADMIN_KEY = os.environ.get("ADMIN_KEY")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Modern lifespan initialization
+    database.init_db()
+    yield
 
 app = FastAPI(
-    title="AI Radar // Frontier Intelligence Aggregator",
-    description="Targeted intelligence aggregator tracking verified releases, research papers, community signals, and systemic security advisories."
+    title="AI Radar // Frontier Engineering Intelligence",
+    description="Dual-track intelligence radar tracking verified model diffs, research disclosures, and curated scoops.",
+    lifespan=lifespan
 )
 
 BASE_DIR = Path(__file__).parent
@@ -31,10 +39,6 @@ if not TEMPLATES_DIR.exists():
     TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-@app.on_event("startup")
-def on_startup():
-    database.init_db()
 
 # -------------------------------------------------------------
 # PYDANTIC SCHEMAS
@@ -59,9 +63,9 @@ class ItemActionPayload(BaseModel):
 async def index_page(request: Request):
     items = database.get_feed_items(limit=60)
     sources = database.get_sources_health()
+    bookmark_count = database.get_bookmark_count()
     
-    # Calculate health summary
-    active_count = sum(1 for s in sources if s.get("last_status_code") == 200)
+    active_count = sum(1 for s in sources if s.get("last_status_code") in (200, 304))
     total_sources = len(sources)
     
     return templates.TemplateResponse("index.html", {
@@ -70,6 +74,7 @@ async def index_page(request: Request):
         "sources": sources,
         "active_sources": active_count,
         "total_sources": total_sources,
+        "bookmark_count": bookmark_count,
         "now_utc": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     })
 
@@ -79,6 +84,7 @@ async def index_page(request: Request):
 
 @app.get("/api/feed")
 async def get_feed(
+    track: Optional[str] = "All",
     category: Optional[str] = "All",
     evidence_tier: Optional[str] = "All",
     search: Optional[str] = None,
@@ -86,21 +92,27 @@ async def get_feed(
     limit: int = Query(60, le=100)
 ):
     """
-    Full-text search, multi-tier filtering, and decayed ranking query.
+    Query-time ranked feed supporting dual-track selection, FTS search, and multi-tier filtering.
     """
     items = database.get_feed_items(
+        track=track,
         category=category,
         evidence_tier=evidence_tier,
         search=search,
         only_bookmarked=only_bookmarked,
         limit=limit
     )
-    return JSONResponse(content={"items": items, "count": len(items)})
+    bookmark_count = database.get_bookmark_count()
+    return JSONResponse(content={
+        "items": items,
+        "count": len(items),
+        "bookmark_count": bookmark_count
+    })
 
 @app.post("/api/feed/{item_id}/action")
 async def update_item_action(item_id: str, payload: ItemActionPayload):
     """
-    Update user interaction state: read, bookmark, or dismiss.
+    Update item state: read, bookmark, or dismiss.
     """
     success = database.update_item_state(
         item_id=item_id,
@@ -109,16 +121,16 @@ async def update_item_action(item_id: str, payload: ItemActionPayload):
         is_dismissed=payload.is_dismissed
     )
     if not success:
-        raise HTTPException(status_code=404, detail="Item not found or no state updated")
-    return {"status": "ok", "item_id": item_id}
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"status": "ok", "item_id": item_id, "bookmark_count": database.get_bookmark_count()}
 
 @app.get("/api/sources/health")
 async def get_sources_health():
     """
-    Returns live health, last checks, and error messages across all monitored adapters.
+    Returns live health, conditional status, and last checked times across all registered adapters.
     """
     sources = database.get_sources_health()
-    active_count = sum(1 for s in sources if s.get("last_status_code") == 200)
+    active_count = sum(1 for s in sources if s.get("last_status_code") in (200, 304))
     return {
         "active_sources": active_count,
         "total_sources": len(sources),
@@ -147,18 +159,15 @@ async def submit_feedback(payload: FeedbackPayload):
     return {"status": "success", "id": feedback_id}
 
 @app.get("/api/feedback")
-async def view_feedback_admin(
-    admin_key: Optional[str] = Query(None),
-    x_admin_key: Optional[str] = Header(None)
-):
+async def view_feedback_admin(x_admin_key: Optional[str] = Header(None)):
     """
-    Secured feedback inspection route. Requires valid admin key.
+    Secured feedback inspection route. Requires valid X-Admin-Key header.
+    Query parameter tokens are rejected to prevent log leakage.
     """
-    token = x_admin_key or admin_key
-    if not token or token != ADMIN_KEY:
+    if not ADMIN_KEY or not x_admin_key or x_admin_key != ADMIN_KEY:
         raise HTTPException(
             status_code=403,
-            detail="Forbidden: Admin access token required to view customer feedback submissions."
+            detail="Forbidden: Valid X-Admin-Key header required."
         )
     return database.get_feedback_list(limit=50)
 

@@ -1,0 +1,221 @@
+# AI Radar // Sourcing Dictionary & Ingestion Configuration
+# Layer A: Primary technical artifacts & snapshot diffs
+# Layer B: Discovery networks & curated investigative tech news
+# Layer C: Systemic security disclosures
+
+settings:
+  user_agent: "AI-Radar/1.0 (+https://github.com/Spidey6978/ai-radar; contact: veergopani55@gmail.com)"
+  max_connections_per_host: 3
+  default_timeout_seconds: 12.0
+  github_token_env: "GITHUB_TOKEN"
+
+sources:
+  # =========================================================================
+  # TRACK 1: RADAR SIGNALS & SNAPSHOT DIFFS (NON-NEWS / GROUND TRUTH)
+  # =========================================================================
+
+  - id: openrouter_models
+    name: "OpenRouter Model Catalog"
+    track: radar_signal
+    layer: primary
+    access: static_json
+    endpoint: "https://openrouter.ai/api/v1/models"
+    poll_interval_minutes: 30
+    conditional_get: etag
+    is_snapshot: true
+    relevance_gate: none
+    evidence_tier: verified_artifact
+    description: "Tracks newly deployed and dropped models across proprietary & open LLMs."
+
+  - id: litellm_prices
+    name: "LiteLLM Pricing & Context Registry"
+    track: radar_signal
+    layer: primary
+    access: static_json
+    endpoint: "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+    poll_interval_minutes: 60
+    conditional_get: etag
+    is_snapshot: true
+    relevance_gate: none
+    evidence_tier: verified_artifact
+    description: "Catches unannounced models and price cuts added to the LiteLLM proxy manifest."
+
+  - id: github_ollama
+    name: "GitHub: Ollama Releases"
+    track: radar_signal
+    layer: primary
+    access: official_api
+    endpoint: "https://api.github.com/repos/ollama/ollama/releases?per_page=2"
+    poll_interval_minutes: 30
+    conditional_get: etag
+    auth_env: GITHUB_TOKEN
+    is_snapshot: false
+    evidence_tier: verified_artifact
+
+  - id: github_vllm
+    name: "GitHub: vLLM Inference Releases"
+    track: radar_signal
+    layer: primary
+    access: official_api
+    endpoint: "https://api.github.com/repos/vllm-project/vllm/releases?per_page=2"
+    poll_interval_minutes: 30
+    conditional_get: etag
+    auth_env: GITHUB_TOKEN
+    is_snapshot: false
+    evidence_tier: verified_artifact
+
+  - id: github_transformers
+    name: "GitHub: Hugging Face Transformers Releases"
+    track: radar_signal
+    layer: primary
+    access: official_api
+    endpoint: "https://api.github.com/repos/huggingface/transformers/releases?per_page=2"
+    poll_interval_minutes: 30
+    conditional_get: etag
+    auth_env: GITHUB_TOKEN
+    is_snapshot: false
+    evidence_tier: verified_artifact
+
+  - id: github_litellm
+    name: "GitHub: LiteLLM Releases"
+    track: radar_signal
+    layer: primary
+    access: official_api
+    endpoint: "https://api.github.com/repos/BerriAI/litellm/releases?per_page=2"
+    poll_interval_minutes: 30
+    conditional_get: etag
+    auth_env: GITHUB_TOKEN
+    is_snapshot: false
+    evidence_tier: verified_artifact
+
+  - id: github_anthropic
+    name: "GitHub: Anthropic SDK Releases"
+    track: radar_signal
+    layer: primary
+    access: official_api
+    endpoint: "https://api.github.com/repos/anthropics/anthropic-sdk-python/releases?per_page=2"
+    poll_interval_minutes: 30
+    conditional_get: etag
+    auth_env: GITHUB_TOKEN
+    is_snapshot: false
+    evidence_tier: verified_artifact
+
+  - id: arxiv_ai
+    name: "arXiv AI & Language Preprints"
+    track: radar_signal
+    layer: research
+    access: official_api
+    endpoint: "https://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.CL&sortBy=submittedDate&sortOrder=descending&max_results=12"
+    poll_interval_minutes: 180
+    host_delay_seconds: 3.0
+    is_snapshot: false
+    relevance_gate: ai_research_strict
+    evidence_tier: technical_paper
+
+  - id: cisa_kev
+    name: "CISA Known Exploited Vulnerabilities"
+    track: radar_signal
+    layer: security
+    access: static_json
+    endpoint: "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    poll_interval_minutes: 360
+    conditional_get: etag
+    is_snapshot: false
+    relevance_gate: cve_ai_strict
+    evidence_tier: security_advisory
+
+  # =========================================================================
+  # TRACK 2: CURATED NEWS, LAB DISCLOSURES & INSIDER LEAKS (ZERO-CLICKBAIT)
+  # =========================================================================
+
+  - id: ars_technica_ai
+    name: "Ars Technica // AI Policy & Tech"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://feeds.arstechnica.com/arstechnica/technology-lab"
+    poll_interval_minutes: 60
+    conditional_get: etag
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: secondary_press
+
+  - id: simon_willison
+    name: "Simon Willison Weblog"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://simonwillison.net/atom/everything/"
+    poll_interval_minutes: 60
+    conditional_get: etag
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: verified_artifact
+
+  - id: huggingface_blog
+    name: "Hugging Face Technical Blog"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://huggingface.co/blog/feed.xml"
+    poll_interval_minutes: 60
+    conditional_get: etag
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: secondary_press
+
+  - id: hn_algolia
+    name: "Hacker News (Algolia AI Index)"
+    track: curated_news
+    layer: discovery
+    access: official_api
+    endpoint: "https://hn.algolia.com/api/v1/search_by_date?tags=story&query=LLM+OR+AI+OR+Claude+OR+Gemini+OR+OpenAI&hitsPerPage=20"
+    poll_interval_minutes: 15
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: community_claim
+
+  - id: reddit_localllama
+    name: "Reddit: r/LocalLLaMA"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://www.reddit.com/r/LocalLLaMA/new/.rss"
+    poll_interval_minutes: 30
+    host_delay_seconds: 2.0
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: community_claim
+
+  - id: gnews_model_changes
+    name: "Google News: Model Removals & Drops"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://news.google.com/rss/search?q=%22AI+model%22+AND+(removed+OR+deprecated+OR+dropped)&hl=en-US&gl=US&ceid=US:en"
+    poll_interval_minutes: 90
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: secondary_press
+
+  - id: gnews_lab_deals
+    name: "Google News: Lab Alliances & Backroom Deals"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://news.google.com/rss/search?q=(OpenAI+OR+Google+OR+Anthropic)+AND+(handshake+OR+alliance+OR+licensing)&hl=en-US&gl=US&ceid=US:en"
+    poll_interval_minutes: 90
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: secondary_press
+
+  - id: gnews_anomalies
+    name: "Google News: Autonomous Anomalies & Drift"
+    track: curated_news
+    layer: discovery
+    access: feed
+    endpoint: "https://news.google.com/rss/search?q=(%22autonomous+agent%22+OR+%22AI+satellite%22)+AND+(anomaly+OR+drift+OR+takeover)&hl=en-US&gl=US&ceid=US:en"
+    poll_interval_minutes: 90
+    is_snapshot: false
+    relevance_gate: anti_sludge_strict
+    evidence_tier: secondary_press
