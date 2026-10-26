@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI RADAR // Frontier & Stealth Intel</title>
+    <title>AI RADAR // Frontier Engineering Intelligence</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -13,82 +13,177 @@
             <div class="header-top">
                 <div class="brand">
                     <span class="brand-badge">INTEL RADAR</span>
-                    <h1>AI RADAR // Frontier Signals</h1>
+                    <h1>AI RADAR // Frontier Intelligence</h1>
                 </div>
                 <div class="header-actions">
-                    <span id="last-updated" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">
-                        {{ last_updated }}
-                    </span>
-                    <button id="btn-refresh" class="btn btn-primary">
+                    <button id="btn-health-modal" class="btn btn-secondary health-pill" title="Inspect source adapters and rate limit status">
+                        <span class="status-indicator-dot"></span>
+                        <span id="sources-summary">{{ active_sources }}/{{ total_sources }} Sources Active</span>
+                    </button>
+                    <button id="btn-refresh" class="btn btn-primary" title="Trigger background collection cycle">
                         ⟳ Scan Channels
                     </button>
                 </div>
             </div>
             <p class="subtitle">
-                Targeted tracker for IDE toolchain changes, model drops & removals, whisper-net leaks, and bizarre autonomous anomalies.
+                Targeted tracker for verified library releases, research disclosures, developer leaks, and systemic AI advisories.
             </p>
         </header>
 
-        <!-- Controls: Search & Category Filter -->
+        <!-- Source Health Drawer / Modal (Initially Hidden) -->
+        <div id="health-drawer" class="health-drawer hidden">
+            <div class="health-drawer-header">
+                <h3>Source Adapters & Registry Health</h3>
+                <button id="btn-close-health" class="btn-icon">✕</button>
+            </div>
+            <div class="health-table-wrapper">
+                <table class="health-table">
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Tier</th>
+                            <th>Last Status</th>
+                            <th>Last Check</th>
+                        </tr>
+                    </thead>
+                    <tbody id="health-table-body">
+                        {% for s in sources %}
+                        <tr>
+                            <td><strong>{{ s.name }}</strong></td>
+                            <td><span class="tier-tag tier-{{ s.tier }}">{{ s.tier }}</span></td>
+                            <td>
+                                {% if s.last_status_code == 200 %}
+                                    <span class="health-badge badge-green">200 OK</span>
+                                {% elif s.last_status_code == 429 %}
+                                    <span class="health-badge badge-yellow">429 Throttled</span>
+                                {% elif s.last_status_code %}
+                                    <span class="health-badge badge-red">{{ s.last_status_code }} Err</span>
+                                {% else %}
+                                    <span class="health-badge badge-muted">Pending</span>
+                                {% endif %}
+                            </td>
+                            <td class="font-mono text-dim">{{ s.last_checked_at[:16] if s.last_checked_at else 'Never' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Controls: Search, View Mode & Filters -->
         <section class="controls-bar">
-            <div class="search-box">
-                <input type="text" id="search-input" class="search-input" placeholder="Search intel (e.g. Gemini, Antigravity, LMSYS, satellite, leak)..." autocomplete="off">
+            <div class="search-row">
+                <div class="search-box">
+                    <input type="text" id="search-input" class="search-input" placeholder="Search intel with SQLite FTS (e.g. vllm, ollama, Claude, Gemini, satellite, leak)..." autocomplete="off">
+                </div>
+                <div class="view-toggles">
+                    <button id="btn-bookmarked" class="btn btn-toggle" title="Show saved bookmarks">
+                        🔖 Saved (<span id="bookmark-count">0</span>)
+                    </button>
+                    <button id="btn-density" class="btn btn-toggle" title="Toggle compact row view">
+                        ☰ Compact View
+                    </button>
+                </div>
             </div>
 
-            <div class="category-pills">
-                <button class="pill active" data-category="All">All Intel</button>
-                <button class="pill" data-category="IDEs & Model Drops">IDEs & Model Drops</button>
-                <button class="pill" data-category="Whisper Net & Leaks">Whisper Net & Leaks</button>
-                <button class="pill" data-category="Bizarre & Anomalies">Bizarre & Anomalies</button>
-                <button class="pill" data-category="Power & Lab Deals">Power & Lab Deals</button>
-                <button class="pill" data-category="Open Source Frontier">Open Source Frontier</button>
+            <!-- Evidence Tier Filter Pills -->
+            <div class="filter-group">
+                <span class="filter-label">EVIDENCE:</span>
+                <div class="evidence-pills">
+                    <button class="pill pill-evidence active" data-evidence="All">All Tiers</button>
+                    <button class="pill pill-evidence" data-evidence="verified_artifact">🟢 Verified Artifacts</button>
+                    <button class="pill pill-evidence" data-evidence="technical_paper">🟡 Research Papers</button>
+                    <button class="pill pill-evidence" data-evidence="security_advisory">🔵 Security Advisories</button>
+                    <button class="pill pill-evidence" data-evidence="community_claim">⚪ Community Leads</button>
+                    <button class="pill pill-evidence" data-evidence="secondary_press">📰 Secondary Press</button>
+                </div>
+            </div>
+
+            <!-- Topic Category Filter Pills -->
+            <div class="filter-group">
+                <span class="filter-label">TOPIC:</span>
+                <div class="category-pills">
+                    <button class="pill pill-category active" data-category="All">All Topics</button>
+                    <button class="pill pill-category" data-category="IDEs & Model Drops">IDEs & Model Drops</button>
+                    <button class="pill pill-category" data-category="Open Source Frontier">Open Source Frontier</button>
+                    <button class="pill pill-category" data-category="Whisper Net & Leaks">Whisper Net & Leaks</button>
+                    <button class="pill pill-category" data-category="Bizarre & Anomalies">Bizarre & Anomalies</button>
+                    <button class="pill pill-category" data-category="Power & Lab Deals">Power & Lab Deals</button>
+                </div>
             </div>
         </section>
 
         <!-- Feed List -->
         <main>
             <div class="feed-header">
-                <span id="intel-count">{{ articles|length }} INTEL SIGNALS</span>
-                <span>REAL-TIME MULTI-SOURCE FEED</span>
+                <span id="intel-count">{{ items|length }} INTEL SIGNALS</span>
+                <span class="text-dim font-mono">SORTED BY EVIDENCE WEIGHT & FRESHNESS DECAY</span>
             </div>
 
             <div id="feed-list" class="feed-list">
-                {% for art in articles %}
-                <article class="intel-card">
+                {% for item in items %}
+                <article class="intel-card" id="card-{{ item.id }}" data-id="{{ item.id }}">
                     <div class="card-meta">
-                        {% if "Confirmed" in art.credibility %}
-                            <span class="tag badge-green">{{ art.credibility }}</span>
-                        {% elif "Credible" in art.credibility or "Developing" in art.credibility or "Community" in art.credibility %}
-                            <span class="tag badge-yellow">{{ art.credibility }}</span>
+                        <!-- Evidence Tier Badge -->
+                        {% if item.evidence_tier == 'verified_artifact' %}
+                            <span class="tag badge-green">🟢 Verified Artifact</span>
+                        {% elif item.evidence_tier == 'technical_paper' %}
+                            <span class="tag badge-yellow">🟡 Research Paper</span>
+                        {% elif item.evidence_tier == 'security_advisory' %}
+                            <span class="tag badge-blue">🔵 Security Advisory</span>
+                        {% elif item.evidence_tier == 'community_claim' %}
+                            <span class="tag badge-muted">⚪ Community Lead</span>
                         {% else %}
-                            <span class="tag badge-red">{{ art.credibility }}</span>
+                            <span class="tag badge-secondary">📰 Secondary Press</span>
                         {% endif %}
 
-                        <span class="tag tag-category">{{ art.category }}</span>
-                        <span class="tag tag-source">{{ art.source }}</span>
-                        <span class="card-time">{{ art.published_at[:16] if art.published_at else '' }}</span>
+                        <span class="tag tag-category">{{ item.category }}</span>
+                        <span class="tag tag-source">{{ item.source_name }}</span>
+                        
+                        {% if item.community_score > 0 %}
+                            <span class="tag tag-score">🔥 {{ item.community_score }} pts</span>
+                        {% endif %}
+                        
+                        <span class="card-time font-mono">{{ item.published_at[:16] if item.published_at else '' }}</span>
                     </div>
 
                     <h2 class="card-title">
-                        <a href="{{ art.url }}" target="_blank" rel="noopener">{{ art.title }}</a>
+                        <a href="{{ item.canonical_url }}" target="_blank" rel="noopener">{{ item.title }}</a>
                     </h2>
 
-                    {% if art.summary %}
-                    <p class="card-summary">{{ art.summary }}</p>
+                    {% if item.clean_summary %}
+                    <p class="card-summary">{{ item.clean_summary }}</p>
                     {% endif %}
 
                     <div class="card-footer">
-                        <a href="{{ art.url }}" target="_blank" rel="noopener" class="card-link">Primary Source ↗</a>
-                        {% if art.discussion_url %}
-                        <a href="{{ art.discussion_url }}" target="_blank" rel="noopener" class="discussion-link">💬 Community Discussion</a>
-                        {% endif %}
+                        <div class="footer-links">
+                            <a href="{{ item.canonical_url }}" target="_blank" rel="noopener" class="card-link">Primary Source ↗</a>
+                            {% for disc in item.discussion_urls %}
+                                {% if disc != item.canonical_url %}
+                                    <a href="{{ disc }}" target="_blank" rel="noopener" class="discussion-link">💬 Community Discussion</a>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
+
+                        <!-- User QoL Item Actions -->
+                        <div class="card-actions">
+                            <button class="btn-action btn-copy-tldr" data-id="{{ item.id }}" title="Copy TL;DR markdown to clipboard">
+                                📋 Copy
+                            </button>
+                            <button class="btn-action btn-bookmark {{ 'active' if item.is_bookmarked else '' }}" data-id="{{ item.id }}" title="Bookmark this item">
+                                🔖 {{ 'Saved' if item.is_bookmarked else 'Save' }}
+                            </button>
+                            <button class="btn-action btn-dismiss" data-id="{{ item.id }}" title="Dismiss from feed">
+                                ✕ Dismiss
+                            </button>
+                        </div>
                     </div>
                 </article>
                 {% endfor %}
             </div>
         </main>
 
-        <!-- Suggestion & Monetization Survey Box -->
+        <!-- Suggestion & Topics Request Box -->
         <section class="feedback-section">
             <h3 class="feedback-title">Help Shape This Radar & Request Topics</h3>
             <p class="feedback-desc">
