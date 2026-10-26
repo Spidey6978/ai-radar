@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI RADAR // Frontier & Stealth Intel</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="header-top">
+                <div class="brand">
+                    <span class="brand-badge">INTEL RADAR</span>
+                    <h1>AI RADAR // Frontier Signals</h1>
+                </div>
+                <div class="header-actions">
+                    <span id="last-updated" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">
+                        {{ last_updated }}
+                    </span>
+                    <button id="btn-refresh" class="btn btn-primary">
+                        ⟳ Scan Channels
+                    </button>
+                </div>
+            </div>
+            <p class="subtitle">
+                Targeted tracker for IDE toolchain changes, model drops & removals, whisper-net leaks, and bizarre autonomous anomalies.
+            </p>
+        </header>
+
+        <!-- Controls: Search & Category Filter -->
+        <section class="controls-bar">
+            <div class="search-box">
+                <input type="text" id="search-input" class="search-input" placeholder="Search intel (e.g. Gemini, Antigravity, LMSYS, satellite, leak)..." autocomplete="off">
+            </div>
+
+            <div class="category-pills">
+                <button class="pill active" data-category="All">All Intel</button>
+                <button class="pill" data-category="IDEs & Model Drops">IDEs & Model Drops</button>
+                <button class="pill" data-category="Whisper Net & Leaks">Whisper Net & Leaks</button>
+                <button class="pill" data-category="Bizarre & Anomalies">Bizarre & Anomalies</button>
+                <button class="pill" data-category="Power & Lab Deals">Power & Lab Deals</button>
+                <button class="pill" data-category="Open Source Frontier">Open Source Frontier</button>
+            </div>
+        </section>
+
+        <!-- Feed List -->
+        <main>
+            <div class="feed-header">
+                <span id="intel-count">{{ articles|length }} INTEL SIGNALS</span>
+                <span>REAL-TIME MULTI-SOURCE FEED</span>
+            </div>
+
+            <div id="feed-list" class="feed-list">
+                {% for art in articles %}
+                <article class="intel-card">
+                    <div class="card-meta">
+                        {% if "Confirmed" in art.credibility %}
+                            <span class="tag badge-green">{{ art.credibility }}</span>
+                        {% elif "Credible" in art.credibility or "Developing" in art.credibility or "Community" in art.credibility %}
+                            <span class="tag badge-yellow">{{ art.credibility }}</span>
+                        {% else %}
+                            <span class="tag badge-red">{{ art.credibility }}</span>
+                        {% endif %}
+
+                        <span class="tag tag-category">{{ art.category }}</span>
+                        <span class="tag tag-source">{{ art.source }}</span>
+                        <span class="card-time">{{ art.published_at[:16] if art.published_at else '' }}</span>
+                    </div>
+
+                    <h2 class="card-title">
+                        <a href="{{ art.url }}" target="_blank" rel="noopener">{{ art.title }}</a>
+                    </h2>
+
+                    {% if art.summary %}
+                    <p class="card-summary">{{ art.summary }}</p>
+                    {% endif %}
+
+                    <div class="card-footer">
+                        <a href="{{ art.url }}" target="_blank" rel="noopener" class="card-link">Primary Source ↗</a>
+                        {% if art.discussion_url %}
+                        <a href="{{ art.discussion_url }}" target="_blank" rel="noopener" class="discussion-link">💬 Community Discussion</a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </main>
+
+        <!-- Suggestion & Monetization Survey Box -->
+        <section class="feedback-section">
+            <h3 class="feedback-title">Help Shape This Radar & Request Topics</h3>
+            <p class="feedback-desc">
+                Found an obscure model removal, unreleased codename, or bizarre incident? Tell us what specific topics, repos, or private feeds you want us to track.
+            </p>
+
+            <form id="feedback-form">
+                <div class="form-group">
+                    <label class="form-label" for="feedback-suggestion">Topics, Outlets, or Anomalies to Track:</label>
+                    <textarea id="feedback-suggestion" class="form-control" placeholder="e.g. Track quiet model changes in Antigravity/Cursor config diffs, or track Japanese autonomous drone/satellite filings..." required></textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="feedback-pay">Would you pay for instant alerts?</label>
+                        <select id="feedback-pay" class="form-control">
+                            <option value="Free Only">No, I'd prefer a free web feed only</option>
+                            <option value="$5/mo - Personal Alerts">$5/mo — Instant Telegram/Discord push for breaking leaks</option>
+                            <option value="$20/mo - Pro Intelligence">$20/mo — Pro: Deep summaries, private repos & commit tracker</option>
+                            <option value="$100/mo - Custom Enterprise">$100/mo — Custom webhook / API feed for my team</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="feedback-contact">Email or Telegram / Discord Handle (Optional):</label>
+                        <input type="text" id="feedback-contact" class="form-control" placeholder="your_handle or email (to notify you if implemented)">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="margin-top: 8px;">
+                    Submit Suggestion
+                </button>
+                <div id="feedback-status" class="feedback-status"></div>
+            </form>
+        </section>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
