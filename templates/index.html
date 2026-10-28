@@ -156,6 +156,10 @@
                         {% if item.community_score > 0 %}
                             <span class="tag tag-score">🔥 {{ item.community_score }} pts</span>
                         {% endif %}
+
+                        {% if item.cluster_size and item.cluster_size > 1 %}
+                            <span class="tag tag-cluster" title="Corroborated across multiple independent sources">⚡ {{ item.cluster_size }} Sources Corroborating</span>
+                        {% endif %}
                         
                         <span class="card-time font-mono">{{ item.published_at[:16] if item.published_at else '' }}</span>
                     </div>
@@ -172,6 +176,19 @@
                     <div class="card-diff-container">
                         <div class="diff-header font-mono">AUTOMATED SNAPSHOT DIFF</div>
                         <pre class="diff-content font-mono">{{ item.evidence_diff }}</pre>
+                    </div>
+                    {% endif %}
+
+                    {% if item.coverage_sources and item.coverage_sources|length > 1 %}
+                    <div class="card-coverage-bar">
+                        <span class="coverage-label font-mono">CORROBORATION:</span>
+                        <div class="coverage-pills">
+                            {% for cov in item.coverage_sources %}
+                                <a href="{{ cov.url }}" target="_blank" rel="noopener" class="coverage-pill" title="{{ cov.title }}">
+                                    {{ cov.source_name }} ↗
+                                </a>
+                            {% endfor %}
+                        </div>
                     </div>
                     {% endif %}
 

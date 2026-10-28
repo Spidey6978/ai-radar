@@ -36,7 +36,7 @@ async def run_collector_cycle() -> dict:
             duration = round(time.time() - start_time, 2)
             logger.info(
                 f"Collector cycle completed in {duration}s. "
-                f"Obs: {stats['observations_saved']}, Upserted: {stats['items_upserted']}, Fetched: {stats['total_fetched']}"
+                f"Obs: {stats['observations_saved']}, Upserted: {stats['items_upserted']}, Fetched: {stats['total_fetched']}, Clusters: {stats.get('clusters_formed', 0)}"
             )
             return {
                 "status": "success",

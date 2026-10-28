@@ -755,12 +755,14 @@ async def fetch_all_and_store() -> Dict[str, Any]:
         items_upserted += 1
 
     database.recalculate_freshness()
+    clusters_formed = database.cluster_feed_items()
 
     return {
         "status": "success",
         "observations_saved": obs_saved,
         "items_upserted": items_upserted,
         "total_fetched": len(all_items),
+        "clusters_formed": clusters_formed,
         "timestamp": now_iso
     }
 

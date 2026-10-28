@@ -89,10 +89,11 @@ async def get_feed(
     evidence_tier: Optional[str] = "All",
     search: Optional[str] = None,
     only_bookmarked: bool = False,
+    only_cluster_masters: bool = True,
     limit: int = Query(60, le=100)
 ):
     """
-    Query-time ranked feed supporting dual-track selection, FTS search, and multi-tier filtering.
+    Query-time ranked feed supporting dual-track selection, cluster deduplication, FTS search, and multi-tier filtering.
     """
     items = database.get_feed_items(
         track=track,
@@ -100,6 +101,7 @@ async def get_feed(
         evidence_tier=evidence_tier,
         search=search,
         only_bookmarked=only_bookmarked,
+        only_cluster_masters=only_cluster_masters,
         limit=limit
     )
     bookmark_count = database.get_bookmark_count()
@@ -108,6 +110,16 @@ async def get_feed(
         "count": len(items),
         "bookmark_count": bookmark_count
     })
+
+@app.get("/api/feed/cluster/{cluster_id}")
+async def get_cluster_details(cluster_id: str):
+    """
+    Returns all stories grouped under a given master cluster.
+    """
+    items = database.get_cluster_items(cluster_id)
+    if not items:
+        raise HTTPException(status_code=404, detail="Cluster not found")
+    return {"cluster_id": cluster_id, "count": len(items), "items": items}
 
 @app.post("/api/feed/{item_id}/action")
 async def update_item_action(item_id: str, payload: ItemActionPayload):

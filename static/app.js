@@ -182,6 +182,8 @@ function renderCard(item) {
     const evidenceBadge = getEvidenceBadge(item.evidence_tier);
     const scoreBadge = item.community_score > 0 ? 
         `<span class="tag tag-score">🔥 ${item.community_score} pts</span>` : "";
+    const clusterBadge = (item.cluster_size && item.cluster_size > 1) ?
+        `<span class="tag tag-cluster" title="Corroborated across multiple independent sources">⚡ ${item.cluster_size} Sources Corroborating</span>` : "";
 
     const isBookmarked = item.is_bookmarked === 1;
     const bookmarkLabel = isBookmarked ? "🔖 Saved" : "🔖 Save";
@@ -207,6 +209,19 @@ function renderCard(item) {
         `;
     }
 
+    let coverageHtml = "";
+    if (item.coverage_sources && Array.isArray(item.coverage_sources) && item.coverage_sources.length > 1) {
+        let pills = item.coverage_sources.map(cov => 
+            `<a href="${escapeHtml(cov.url)}" target="_blank" rel="noopener" class="coverage-pill" title="${escapeHtml(cov.title)}">${escapeHtml(cov.source_name)} ↗</a>`
+        ).join("");
+        coverageHtml = `
+            <div class="card-coverage-bar">
+                <span class="coverage-label font-mono">CORROBORATION:</span>
+                <div class="coverage-pills">${pills}</div>
+            </div>
+        `;
+    }
+
     return `
         <article class="intel-card ${isReadClass}" id="card-${item.id}" data-id="${item.id}">
             <div class="card-meta">
@@ -214,6 +229,7 @@ function renderCard(item) {
                 <span class="tag tag-category">${escapeHtml(item.category)}</span>
                 <span class="tag tag-source">${escapeHtml(item.source_name)}</span>
                 ${scoreBadge}
+                ${clusterBadge}
                 <span class="card-time font-mono">${formatDate(item.published_at || item.created_at)}</span>
             </div>
 
@@ -224,6 +240,7 @@ function renderCard(item) {
             ${item.clean_summary ? `<p class="card-summary">${escapeHtml(item.clean_summary)}</p>` : ""}
 
             ${diffHtml}
+            ${coverageHtml}
 
             <div class="card-footer">
                 <div class="footer-links">

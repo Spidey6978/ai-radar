@@ -155,7 +155,11 @@ def init_db():
         ("sources", "last_modified", "TEXT"),
         ("sources", "items_found_last_run", "INTEGER DEFAULT 0"),
         ("feed_items", "track", "TEXT DEFAULT 'curated_news'"),
-        ("feed_items", "evidence_diff", "TEXT")
+        ("feed_items", "evidence_diff", "TEXT"),
+        ("feed_items", "cluster_id", "TEXT"),
+        ("feed_items", "is_cluster_master", "INTEGER DEFAULT 1"),
+        ("feed_items", "cluster_size", "INTEGER DEFAULT 1"),
+        ("feed_items", "coverage_sources", "TEXT DEFAULT '[]'")
     ]
     for table, col, col_type in cols_to_add:
         try:
@@ -167,6 +171,7 @@ def init_db():
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_feed_category ON feed_items(category)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_feed_evidence ON feed_items(evidence_tier)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_feed_track ON feed_items(track)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_feed_cluster ON feed_items(is_cluster_master, freshness_score DESC)")
 
     # 6. SQLite FTS5 Virtual Table
     cursor.execute("""
@@ -527,6 +532,203 @@ def recalculate_freshness():
     conn.commit()
     conn.close()
 
+def cluster_feed_items(time_window_hours: float = 72.0) -> int:
+    """
+    Groups related reports of the same event/story into master clusters.
+    Uses Union-Find on overlapping entities, version numbers, and shared external references.
+    """
+    import re
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT id, source_name, title, clean_summary, canonical_url, primary_type, 
+               evidence_tier, category, track, base_score, community_score, discussion_urls, 
+               published_at, created_at
+        FROM feed_items 
+        WHERE is_dismissed = 0
+        ORDER BY published_at DESC
+    """)
+    rows = cursor.fetchall()
+    items = [dict(r) for r in rows]
+    n = len(items)
+    if n <= 1:
+        conn.close()
+        return 0
+
+    class DSU:
+        def __init__(self, size):
+            self.parent = list(range(size))
+        def find(self, i):
+            if self.parent[i] == i:
+                return i
+            self.parent[i] = self.find(self.parent[i])
+            return self.parent[i]
+        def union(self, i, j):
+            root_i = self.find(i)
+            root_j = self.find(j)
+            if root_i != root_j:
+                self.parent[root_i] = root_j
+
+    dsu = DSU(n)
+
+    def extract_versions(text: str) -> set:
+        return set(re.findall(r'\bv?\d+\.\d+(?:\.\d+)?\b', text.lower()))
+
+    def get_tokens(title: str) -> set:
+        t = re.sub(r'\[.*?\]', '', title.lower())
+        words = re.findall(r'[a-z0-9\.\-]{3,}', t)
+        stopwords = {
+            'the', 'and', 'for', 'with', 'from', 'that', 'this', 'into', 'amid', 'over', 
+            'out', 'their', 'own', 'than', 'then', 'new', 'after', 'about', 'has', 'have', 
+            'been', 'which', 'will', 'are', 'not', 'can', 'could', 'would', 'says', 'amid'
+        }
+        return set(words) - stopwords
+
+    anchor_entities = {
+        'openai', 'google', 'anthropic', 'deepmind', 'deepseek', 'meta', 'spacex', 
+        'aerospace', 'ollama', 'vllm', 'litellm', 'cursor', 'antigravity', 'argon', 
+        'astra', 'satellite', 'cve', 'mistral', 'qwen', 'huggingface'
+    }
+
+    item_meta = []
+    for it in items:
+        try:
+            disc_set = set(json.loads(it.get("discussion_urls") or "[]"))
+        except Exception:
+            disc_set = set()
+        disc_set.add(it["canonical_url"])
+        
+        item_meta.append({
+            "toks": get_tokens(it["title"]),
+            "vers": extract_versions(it["title"]),
+            "urls": disc_set
+        })
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            a = items[i]
+            b = items[j]
+            m_a = item_meta[i]
+            m_b = item_meta[j]
+            
+            # Rule 1: Shared external canonical link (e.g. HN post links to GitHub release)
+            if m_a["urls"] & m_b["urls"]:
+                dsu.union(i, j)
+                continue
+                
+            # Rule 2: If both are releases, do not cluster if different version tags
+            if a["primary_type"] == "release" and b["primary_type"] == "release":
+                if m_a["vers"] and m_b["vers"] and m_a["vers"] != m_b["vers"]:
+                    continue
+
+            # Rule 3: Version match on same anchor entity
+            shared_vers = m_a["vers"] & m_b["vers"]
+            shared_anchors = (m_a["toks"] & m_b["toks"]) & anchor_entities
+            if shared_vers and shared_anchors:
+                dsu.union(i, j)
+                continue
+
+            # Rule 4: High entity & keyword overlap
+            shared_toks = m_a["toks"] & m_b["toks"]
+            if len(shared_anchors) >= 1 and len(shared_toks) >= 3:
+                jacc = len(shared_toks) / len(m_a["toks"] | m_b["toks"]) if (m_a["toks"] | m_b["toks"]) else 0
+                if jacc >= 0.20:
+                    dsu.union(i, j)
+
+    clusters: Dict[int, List[int]] = {}
+    for idx in range(n):
+        root = dsu.find(idx)
+        if root not in clusters:
+            clusters[root] = []
+        clusters[root].append(idx)
+
+    tier_rank = {
+        "verified_artifact": 5,
+        "technical_paper": 4,
+        "security_advisory": 4,
+        "secondary_press": 2,
+        "community_claim": 1
+    }
+
+    multi_source_clusters = 0
+
+    for root, member_indices in clusters.items():
+        if len(member_indices) == 1:
+            idx = member_indices[0]
+            it_id = items[idx]["id"]
+            cursor.execute("""
+                UPDATE feed_items 
+                SET is_cluster_master = 1, cluster_size = 1, cluster_id = ?, coverage_sources = '[]'
+                WHERE id = ?
+            """, (it_id, it_id))
+        else:
+            multi_source_clusters += 1
+            def sort_key(idx):
+                it = items[idx]
+                t_score = tier_rank.get(it["evidence_tier"], 1)
+                comm = it.get("community_score", 0)
+                base = it.get("base_score", 0.0)
+                return (t_score, comm, base)
+
+            sorted_members = sorted(member_indices, key=sort_key, reverse=True)
+            master_idx = sorted_members[0]
+            master_item = items[master_idx]
+            master_id = master_item["id"]
+
+            coverage_list = []
+            max_comm_score = master_item.get("community_score", 0)
+
+            for m_idx in sorted_members:
+                m_it = items[m_idx]
+                max_comm_score = max(max_comm_score, m_it.get("community_score", 0))
+                coverage_list.append({
+                    "id": m_it["id"],
+                    "source_name": m_it["source_name"],
+                    "title": m_it["title"],
+                    "url": m_it["canonical_url"],
+                    "tier": m_it["evidence_tier"],
+                    "community_score": m_it.get("community_score", 0),
+                    "published_at": m_it.get("published_at")
+                })
+
+            cursor.execute("""
+                UPDATE feed_items 
+                SET is_cluster_master = 1, 
+                    cluster_size = ?, 
+                    cluster_id = ?, 
+                    community_score = ?,
+                    coverage_sources = ?
+                WHERE id = ?
+            """, (len(sorted_members), master_id, max_comm_score, json.dumps(coverage_list), master_id))
+
+            for m_idx in sorted_members[1:]:
+                sub_id = items[m_idx]["id"]
+                cursor.execute("""
+                    UPDATE feed_items 
+                    SET is_cluster_master = 0, 
+                        cluster_size = 1, 
+                        cluster_id = ?
+                    WHERE id = ?
+                """, (master_id, sub_id))
+
+    conn.commit()
+    conn.close()
+    return multi_source_clusters
+
+def get_cluster_items(cluster_id: str) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM feed_items 
+        WHERE cluster_id = ? OR id = ?
+        ORDER BY evidence_tier DESC, published_at DESC
+    """, (cluster_id, cluster_id))
+    rows = cursor.fetchall()
+    results = [dict(r) for r in rows]
+    conn.close()
+    return results
+
 def get_feed_items(
     track: Optional[str] = "All",
     category: Optional[str] = None,
@@ -534,6 +736,7 @@ def get_feed_items(
     search: Optional[str] = None,
     only_bookmarked: bool = False,
     include_dismissed: bool = False,
+    only_cluster_masters: bool = True,
     limit: int = 60
 ) -> List[Dict[str, Any]]:
     conn = get_connection()
@@ -548,6 +751,9 @@ def get_feed_items(
     if only_bookmarked:
         where_clauses.append("f.is_bookmarked = 1")
         
+    if only_cluster_masters:
+        where_clauses.append("f.is_cluster_master = 1")
+
     if track and track != "All":
         where_clauses.append("f.track = ?")
         params.append(track)
@@ -594,6 +800,10 @@ def get_feed_items(
             d["discussion_urls"] = json.loads(d.get("discussion_urls") or "[]")
         except Exception:
             d["discussion_urls"] = []
+        try:
+            d["coverage_sources"] = json.loads(d.get("coverage_sources") or "[]")
+        except Exception:
+            d["coverage_sources"] = []
         results.append(d)
         
     conn.close()
